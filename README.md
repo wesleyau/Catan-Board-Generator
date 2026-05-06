@@ -6,7 +6,7 @@ Single HTML file, no dependencies, runs in any browser — including offline.
 
 ---
 
-## ▶ Use it now
+## Use it now
 
 # **[https://wesleyau.github.io/Catan-Board-Generator/](https://wesleyau.github.io/Catan-Board-Generator/)**
 
