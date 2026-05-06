@@ -1,4 +1,4 @@
-# Tournament Boards
+# Catan Tournament Boards
 
 A random Catan board generator that produces tournament-legal layouts.
 
@@ -16,17 +16,16 @@ Works on any device. Open on your phone and add to home screen for an app-like i
 
 ## What it does
 
-Generates a standard 19-hex Catan board (resources + number tokens). All rules are configurable, so you can tighten or loosen things for casual play.
+Generates a standard 19-hex Catan board (resources + number tokens) that satisfies tournament constraints. All rules are configurable, so you can tighten or loosen things for casual play.
 
-## Default rules 
+## Default rules
 
 1. No 6 or 8 touching another 6 or 8
 2. No 2 touching a 12
 3. No two of the same number touching
 4. No duplicate number on the same resource
-5. At least one 2 or 12 on a board edge
 
-The desert is placed at random.
+The desert is placed at random, and there's no requirement on where 2 or 12 land — both can be tightened in the Rules panel.
 
 ## Configurable options
 
@@ -38,7 +37,7 @@ Open the **Rules** panel above the Generate button. Each rule can be relaxed or 
 | 2-and-12 separation | No touching *(default)* · Allowed |
 | Same number touching | Forbidden *(default)* · Allowed |
 | Same number on same resource | Forbidden *(default)* · Allowed |
-| 2 or 12 on edge | At least 1 *(default)* · Both · No requirement |
+| 2 or 12 on edge | At least 1 · Both · No requirement *(default)* |
 | Desert placement | Random *(default)* · Center · 2nd ring · Edge |
 
 A "Reset to default" button restores everything in one click.
