@@ -1,4 +1,4 @@
-# CZR Tournament Boards
+# Tournament Boards
 
 A random Catan board generator that produces tournament-legal layouts.
 
@@ -16,9 +16,9 @@ Works on any device. Open on your phone and add to home screen for an app-like i
 
 ## What it does
 
-Generates a standard 19-hex Catan board (resources + number tokens) that satisfies the CZR tournament constraints. All rules are configurable, so you can tighten or loosen things for casual play.
+Generates a standard 19-hex Catan board (resources + number tokens). All rules are configurable, so you can tighten or loosen things for casual play.
 
-## Default rules (CZR)
+## Default rules 
 
 1. No 6 or 8 touching another 6 or 8
 2. No 2 touching a 12
@@ -41,7 +41,7 @@ Open the **Rules** panel above the Generate button. Each rule can be relaxed or 
 | 2 or 12 on edge | At least 1 *(default)* · Both · No requirement |
 | Desert placement | Random *(default)* · Center · 2nd ring · Edge |
 
-A "Reset to CZR default" button restores everything in one click.
+A "Reset to default" button restores everything in one click.
 
 > Note: "Allowed" means *not enforced* — the situation may or may not occur by chance. It does not force the situation to happen.
 
