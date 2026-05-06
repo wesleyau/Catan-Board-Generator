@@ -6,6 +6,14 @@ Single HTML file, no dependencies, runs in any browser — including offline.
 
 ---
 
+## ▶ Use it now
+
+# **[https://wesleyau.github.io/Catan-Board-Generator/](https://wesleyau.github.io/Catan-Board-Generator/)**
+
+Works on any device. Open on your phone and add to home screen for an app-like icon.
+
+---
+
 ## What it does
 
 Generates a standard 19-hex Catan board (resources + number tokens) that satisfies the CZR tournament constraints. All rules are configurable, so you can tighten or loosen things for casual play.
