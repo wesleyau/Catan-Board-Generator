@@ -162,7 +162,7 @@
   <header>
     <div>
       <h1>Catan Tournament Boards</h1>
-      <div class="sub">Random Catan board generator</div>
+      <div class="sub">Random Catan board generator — tournament-legal layouts</div>
     </div>
   </header>
 
@@ -251,7 +251,7 @@ const RULE_SCHEMA = [
   { key: 'sameRes', label: 'Same number on same resource',
     options: [{val:'off',label:'Forbidden (default)'},{val:'on',label:'Allowed'}], def: 'off' },
   { key: 'edge2or12', label: '2 or 12 on edge',
-    options: [{val:'1',label:'At least 1'},{val:'both',label:'Both'},{val:'none',label:'No requirement (default)'}], def: 'none' },
+    options: [{val:'none',label:'No requirement (default)'},{val:'1',label:'At least 1'},{val:'both',label:'Both'}], def: 'none' },
   { key: 'desert', label: 'Desert placement',
     options: [{val:'random',label:'Random (default)'},{val:'center',label:'Center'},{val:'ring',label:'2nd ring'},{val:'edge',label:'Edge'}], def: 'random' },
 ];
