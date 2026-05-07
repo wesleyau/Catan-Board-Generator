@@ -16,7 +16,7 @@ Works on any device. Open on your phone and add to home screen for an app-like i
 
 ## What it does
 
-Generates a standard 19-hex Catan board (resources + number tokens) that satisfies tournament constraints. All rules are configurable, so you can tighten or loosen things for casual play.
+Generates a standard 19-hex Catan board (resources + number tokens). All rules are configurable, so you can tighten or loosen things for casual play.
 
 ## Default rules
 
@@ -47,7 +47,7 @@ A "Reset to default" button restores everything in one click.
 ## Other features
 
 - **Shareable seeds.** Every board has a hex seed shown next to the Generate button. Click it to copy a URL like `?seed=deadbeef` — open that URL anywhere and you get the exact same board. Useful for tournaments where players need a reproducible setup.
-- **Mobile-friendly.** Works on iPhone and Android. Add to home screen via Safari (Share → Add to Home Screen) or Chrome (⋮ → Add to Home screen) for an app-like icon.
+- **Mobile-friendly.** Works on iPhone and Android. 
 - **Works offline.** Once the page loads, no network is required.
 
 ## Run locally
