@@ -100,6 +100,11 @@
   .rules-body { padding: 4px 16px 16px; border-top: 1px solid #d6c39a; }
   .rule { padding: 10px 0; border-bottom: 1px dashed #d6c39a; }
   .rule:last-child { border-bottom: none; }
+  .rule.disabled { opacity: 0.4; pointer-events: none; }
+  .rule.disabled .rule-label::after {
+    content: " (only used in random mode)";
+    font-style: italic; font-weight: 400; color: var(--ink-soft); font-size: 12px;
+  }
   .rule-label { font-size: 14px; font-weight: 500; color: var(--ink); margin-bottom: 6px; }
   .rule-options { display: flex; flex-wrap: wrap; gap: 6px; }
   .rule-options label { display: inline-block; cursor: pointer; }
@@ -242,6 +247,8 @@ const NUMBER_TOKENS = [2,3,3,4,4,5,5,6,6,8,8,9,9,10,10,11,11,12];
 const PIP_COUNT = { 2:1, 3:2, 4:3, 5:4, 6:5, 8:5, 9:4, 10:3, 11:2, 12:1 };
 
 const RULE_SCHEMA = [
+  { key: 'numberMethod', label: 'Number placement',
+    options: [{val:'random',label:'Random (default)'},{val:'spiral',label:'Spiral (A–R)'}], def: 'random' },
   { key: 'redSep', label: '6/8 separation',
     options: [{val:'on',label:'No touching (default)'},{val:'off',label:'Allowed'}], def: 'on' },
   { key: 'twoTwelveSep', label: '2 and 12 separation',
@@ -255,6 +262,19 @@ const RULE_SCHEMA = [
   { key: 'desert', label: 'Desert placement',
     options: [{val:'random',label:'Random (default)'},{val:'center',label:'Center'},{val:'ring',label:'2nd ring'},{val:'edge',label:'Edge'}], def: 'random' },
 ];
+// Rules that only apply in random number mode
+const RANDOM_ONLY_RULES = new Set(['redSep','twoTwelveSep','sameTouch','sameRes','edge2or12']);
+
+// Official spiral order: counter-clockwise around the outer ring starting at top-left,
+// then spiraling inward, ending at center.
+// Hex indexing: 0,1,2 / 3,4,5,6 / 7,8,9,10,11 / 12,13,14,15 / 16,17,18
+// Outer ring (CCW from top-left):
+//   0 -> 3 -> 7 -> 12 -> 16 -> 17 -> 18 -> 15 -> 11 -> 6 -> 2 -> 1 -> 0 (12 hexes)
+// Inner ring (CCW from upper-left): 4 -> 8 -> 13 -> 14 -> 10 -> 5 (6 hexes)
+// Center: 9
+const SPIRAL_ORDER = [0, 3, 7, 12, 16, 17, 18, 15, 11, 6, 2, 1, 4, 8, 13, 14, 10, 5, 9];
+// Letters A–R map to these numbers in order (official 3–4 player Catan set):
+const SPIRAL_NUMBERS = [5, 2, 6, 3, 8, 10, 9, 12, 11, 4, 8, 10, 9, 4, 5, 6, 3, 11];
 const DEFAULT_RULES = Object.fromEntries(RULE_SCHEMA.map(r => [r.key, r.def]));
 let rules = { ...DEFAULT_RULES };
 
@@ -357,8 +377,28 @@ function edgeRequirementSatisfied(numbers) {
   return true;
 }
 
+function placeNumbersSpiral(resources, desertIdx) {
+  // Walk SPIRAL_ORDER, skipping the desert hex, and assign letters A, B, C... in order.
+  // Each letter has a fixed number from SPIRAL_NUMBERS.
+  const placement = new Array(19).fill(null);
+  let letterIdx = 0;
+  for (const hexIdx of SPIRAL_ORDER) {
+    if (hexIdx === desertIdx) continue;
+    placement[hexIdx] = SPIRAL_NUMBERS[letterIdx];
+    letterIdx++;
+  }
+  return placement;
+}
+
 function generateBoard(seed, maxAttempts = 200) {
   const rng = mulberry32(seed);
+  if (rules.numberMethod === 'spiral') {
+    // Spiral mode: only randomize resources & desert position. Numbers are deterministic
+    // once the desert position is fixed, so no per-rule constraints apply.
+    const { resources, desertIdx } = placeResources(rng);
+    const numbers = placeNumbersSpiral(resources, desertIdx);
+    return { resources, numbers, attempts: 1 };
+  }
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const { resources, desertIdx } = placeResources(rng);
     const numbers = placeNumbers(resources, desertIdx, rng);
@@ -433,8 +473,10 @@ function renderBoard({ resources, numbers }) {
 function renderRulesPanel() {
   const body = document.getElementById('rulesBody');
   let html = '';
+  const spiralActive = rules.numberMethod === 'spiral';
   for (const r of RULE_SCHEMA) {
-    html += `<div class="rule"><div class="rule-label">${r.label}</div><div class="rule-options">`;
+    const disabled = spiralActive && RANDOM_ONLY_RULES.has(r.key);
+    html += `<div class="rule${disabled ? ' disabled' : ''}"><div class="rule-label">${r.label}</div><div class="rule-options">`;
     for (const o of r.options) {
       const checked = rules[r.key] === o.val ? 'checked' : '';
       html += `<label><input type="radio" name="${r.key}" value="${o.val}" ${checked}><span>${o.label}</span></label>`;
@@ -446,6 +488,8 @@ function renderRulesPanel() {
   body.querySelectorAll('input[type=radio]').forEach(input => {
     input.addEventListener('change', () => {
       rules[input.name] = input.value;
+      // If number method changed, re-render so the disabled state updates
+      if (input.name === 'numberMethod') renderRulesPanel();
       updateRulesSummary();
       updateActiveRulesList();
     });
@@ -468,8 +512,10 @@ function ruleDescription(r, val) {
 }
 function updateActiveRulesList() {
   const ul = document.getElementById('activeRules');
+  const spiralActive = rules.numberMethod === 'spiral';
   let html = '';
   for (const r of RULE_SCHEMA) {
+    if (spiralActive && RANDOM_ONLY_RULES.has(r.key)) continue;
     html += `<li><strong>${r.label}:</strong> ${ruleDescription(r, rules[r.key])}</li>`;
   }
   ul.innerHTML = html;
