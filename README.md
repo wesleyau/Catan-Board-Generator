@@ -16,7 +16,10 @@ Works on any device. Open on your phone and add to home screen for an app-like i
 
 ## What it does
 
-Generates a standard 19-hex Catan board (resources + number tokens). All rules are configurable, so you can tighten or loosen things for casual play.
+Generates a standard 19-hex Catan board (resources + number tokens). Two number-placement methods are supported:
+
+- **Random** *(default)* — number tokens placed randomly with configurable tournament constraints (no 6/8 touching, etc.)
+- **Spiral (A–R)** — official rulebook method using the letters on the back of the number tokens
 
 ## Default rules
 
@@ -26,6 +29,16 @@ Generates a standard 19-hex Catan board (resources + number tokens). All rules a
 4. No duplicate number on the same resource
 
 The desert is placed at random, and there's no requirement on where 2 or 12 land — both can be tightened in the Rules panel.
+
+## Spiral mode
+
+Uses the official Catan rulebook method. Number tokens have letters A through R on the back; place A on a corner hex and continue counter-clockwise around the outer ring (skipping the desert), then spiral inward to the center.
+
+The official 3–4 player letter-to-number mapping is built in:
+
+> A=5, B=2, C=6, D=3, E=8, F=10, G=9, H=12, I=11, J=4, K=8, L=10, M=9, N=4, O=5, P=3, Q=11, R=6
+
+In spiral mode, the constraint rules grey out — they only apply when numbers are placed randomly. Resources and desert position still vary, so each board is different.
 
 ## Configurable options
 
