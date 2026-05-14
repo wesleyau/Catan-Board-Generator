@@ -26,7 +26,6 @@ Generates a standard 19-hex Catan board (resources + number tokens). Two number-
 1. No 6 or 8 touching another 6 or 8
 2. No 2 touching a 12
 3. No two of the same number touching
-4. No duplicate number on the same resource
 
 The desert is placed at random, and there's no requirement on where 2 or 12 land — both can be tightened in the Rules panel.
 
