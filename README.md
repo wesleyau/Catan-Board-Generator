@@ -1,8 +1,6 @@
 # Catan Tournament Boards
 
-A random Catan board generator that produces tournament-legal layouts.
-
-Single HTML file, no dependencies, runs in any browser — including offline.
+A random Catan board generator that produces tournament layouts.
 
 ---
 
