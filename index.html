@@ -101,8 +101,12 @@
   .rule { padding: 10px 0; border-bottom: 1px dashed #d6c39a; }
   .rule:last-child { border-bottom: none; }
   .rule.disabled { opacity: 0.4; pointer-events: none; }
-  .rule.disabled .rule-label::after {
+  .rule.disabled-spiral .rule-label::after {
     content: " (only used in random mode)";
+    font-style: italic; font-weight: 400; color: var(--ink-soft); font-size: 12px;
+  }
+  .rule.disabled-56 .rule-label::after {
+    content: " (only in 3–4 player mode)";
     font-style: italic; font-weight: 400; color: var(--ink-soft); font-size: 12px;
   }
   .rule-label { font-size: 14px; font-weight: 500; color: var(--ink); margin-bottom: 6px; }
@@ -193,14 +197,7 @@
     </div>
     <div>
       <h2>Resources</h2>
-      <div class="swatches">
-        <span class="swatch"><i style="background:var(--forest)"></i>Wood ×4</span>
-        <span class="swatch"><i style="background:var(--pasture)"></i>Sheep ×4</span>
-        <span class="swatch"><i style="background:var(--fields)"></i>Wheat ×4</span>
-        <span class="swatch"><i style="background:var(--hills)"></i>Brick ×3</span>
-        <span class="swatch"><i style="background:var(--mountains)"></i>Ore ×3</span>
-        <span class="swatch"><i style="background:var(--desert)"></i>Desert ×1</span>
-      </div>
+      <div class="swatches" id="resourceLegend"></div>
     </div>
   </div>
 
@@ -208,33 +205,98 @@
 </div>
 
 <script>
-const ADJACENCY = [
+// ===== Board size configurations =====
+
+const ADJACENCY_34 = [
   [1, 3, 4],[0, 2, 4, 5],[1, 5, 6],[0, 4, 7, 8],[0, 1, 3, 5, 8, 9],
   [1, 2, 4, 6, 9, 10],[2, 5, 10, 11],[3, 8, 12],[3, 4, 7, 9, 12, 13],
   [4, 5, 8, 10, 13, 14],[5, 6, 9, 11, 14, 15],[6, 10, 15],[7, 8, 13, 16],
   [8, 9, 12, 14, 16, 17],[9, 10, 13, 15, 17, 18],[10, 11, 14, 18],
   [12, 13, 17],[13, 14, 16, 18],[14, 15, 17],
 ];
-const EDGE_HEXES   = new Set([0,1,2,3,6,7,11,12,15,16,17,18]);
-const SECOND_RING  = new Set([4,5,8,10,13,14]);
-const CENTER_HEX   = 9;
+const EDGE_HEXES_34   = new Set([0,1,2,3,6,7,11,12,15,16,17,18]);
+const SECOND_RING_34  = new Set([4,5,8,10,13,14]);
+const CENTER_HEX_34   = 9;
+
+// 5-6 player: 30 hexes, rows 3-4-5-6-5-4-3
+const ADJACENCY_56 = [
+  [1,3,4],[0,2,4,5],[1,5,6],[0,4,7,8],[0,1,3,5,8,9],
+  [1,2,4,6,9,10],[2,5,10,11],[3,8,12,13],[3,4,7,9,13,14],
+  [4,5,8,10,14,15],[5,6,9,11,15,16],[6,10,16,17],[7,13,18],
+  [7,8,12,14,18,19],[8,9,13,15,19,20],[9,10,14,16,20,21],
+  [10,11,15,17,21,22],[11,16,22],[12,13,19,23],[13,14,18,20,23,24],
+  [14,15,19,21,24,25],[15,16,20,22,25,26],[16,17,21,26],
+  [18,19,24,27],[19,20,23,25,27,28],[20,21,24,26,28,29],
+  [21,22,25,29],[23,24,28],[24,25,27,29],[25,26,28],
+];
+const EDGE_HEXES_56  = new Set([0,1,2,3,6,7,11,12,17,18,22,23,26,27,28,29]);
+// "2nd ring" for the 5-6 board — the layer of interior hexes just inside the perimeter.
+// Interior hexes (6 neighbors): 4,5,8,9,10,13,14,15,16,19,20,21,24,25.
+// Inner core (hexes only touching other interior hexes): 9,14,15,20.
+// 2nd ring = interior minus inner core.
+const SECOND_RING_56 = new Set([4,5,8,10,13,16,19,21,24,25]);
+// "Center" for 5-6 is a small cluster of 4 inner-core hexes; pick from those.
+const CENTER_HEXES_56 = [9,14,15,20];
+
+const RESOURCE_COUNTS_34 = { forest:4, pasture:4, fields:4, hills:3, mountains:3, desert:1 };
+const NUMBER_TOKENS_34  = [2,3,3,4,4,5,5,6,6,8,8,9,9,10,10,11,11,12];
+
+const RESOURCE_COUNTS_56 = { forest:6, pasture:6, fields:6, hills:5, mountains:5, desert:2 };
+const NUMBER_TOKENS_56  = [2,2, 3,3,3, 4,4,4, 5,5,5, 6,6,6, 8,8,8, 9,9,9, 10,10,10, 11,11,11, 12,12];
+
+// Live references — updated by applyBoardSize() based on the rule setting
+let ADJACENCY   = ADJACENCY_34;
+let EDGE_HEXES  = EDGE_HEXES_34;
+let SECOND_RING = SECOND_RING_34;
+let CENTER_HEX_LIST = [CENTER_HEX_34];
+let RESOURCE_COUNTS = RESOURCE_COUNTS_34;
+let NUMBER_TOKENS   = NUMBER_TOKENS_34;
+let HEX_POS = [];
+let TOTAL_HEXES = 19;
+let BOARD_VIEWBOX = "-230 -210 460 420";
+
+function applyBoardSize() {
+  if (rules && rules.boardSize === '56') {
+    ADJACENCY = ADJACENCY_56;
+    EDGE_HEXES = EDGE_HEXES_56;
+    SECOND_RING = SECOND_RING_56;
+    CENTER_HEX_LIST = CENTER_HEXES_56.slice();
+    RESOURCE_COUNTS = RESOURCE_COUNTS_56;
+    NUMBER_TOKENS = NUMBER_TOKENS_56;
+    HEX_POS = buildHexPositions([3,4,5,6,5,4,3]);
+    TOTAL_HEXES = 30;
+    BOARD_VIEWBOX = "-290 -280 580 560";
+  } else {
+    ADJACENCY = ADJACENCY_34;
+    EDGE_HEXES = EDGE_HEXES_34;
+    SECOND_RING = SECOND_RING_34;
+    CENTER_HEX_LIST = [CENTER_HEX_34];
+    RESOURCE_COUNTS = RESOURCE_COUNTS_34;
+    NUMBER_TOKENS = NUMBER_TOKENS_34;
+    HEX_POS = buildHexPositions([3,4,5,4,3]);
+    TOTAL_HEXES = 19;
+    BOARD_VIEWBOX = "-230 -210 460 420";
+  }
+  const svg = document.getElementById('board');
+  if (svg) svg.setAttribute('viewBox', BOARD_VIEWBOX);
+  updateResourceLegend();
+}
 
 const R = 50;
 const SQ3 = Math.sqrt(3);
-const HEX_POS = (() => {
-  const rows = [3, 4, 5, 4, 3];
+function buildHexPositions(rows) {
   const positions = [];
+  const midRow = (rows.length - 1) / 2;
   rows.forEach((count, rowIdx) => {
-    const y = (rowIdx - 2) * 1.5 * R;
+    const y = (rowIdx - midRow) * 1.5 * R;
     for (let c = 0; c < count; c++) {
       const x = (c - (count - 1) / 2) * SQ3 * R;
       positions.push({ x, y });
     }
   });
   return positions;
-})();
-
-const RESOURCE_COUNTS = { forest: 4, pasture: 4, fields: 4, hills: 3, mountains: 3, desert: 1 };
+}
+HEX_POS = buildHexPositions([3,4,5,4,3]);
 const RESOURCE_COLORS = {
   forest: 'var(--forest)', pasture: 'var(--pasture)', fields: 'var(--fields)',
   hills: 'var(--hills)', mountains: 'var(--mountains)', desert: 'var(--desert)'
@@ -243,10 +305,11 @@ const RESOURCE_LABEL = {
   forest: 'Wood', pasture: 'Sheep', fields: 'Wheat',
   hills: 'Brick', mountains: 'Ore', desert: 'Desert'
 };
-const NUMBER_TOKENS = [2,3,3,4,4,5,5,6,6,8,8,9,9,10,10,11,11,12];
 const PIP_COUNT = { 2:1, 3:2, 4:3, 5:4, 6:5, 8:5, 9:4, 10:3, 11:2, 12:1 };
 
 const RULE_SCHEMA = [
+  { key: 'boardSize', label: 'Board size',
+    options: [{val:'34',label:'3–4 player (default)'},{val:'56',label:'5–6 player'}], def: '34' },
   { key: 'numberMethod', label: 'Number placement',
     options: [{val:'random',label:'Random (default)'},{val:'spiral',label:'Spiral (A–R)'}], def: 'random' },
   { key: 'redSep', label: '6/8 separation',
@@ -256,14 +319,16 @@ const RULE_SCHEMA = [
   { key: 'sameTouch', label: 'Same number touching',
     options: [{val:'off',label:'Forbidden (default)'},{val:'on',label:'Allowed'}], def: 'off' },
   { key: 'sameRes', label: 'Same number on same resource',
-    options: [{val:'on',label:'Allowed (default)'},{val:'off',label:'Forbidden'}], def: 'on' },
+    options: [{val:'off',label:'Forbidden (default)'},{val:'on',label:'Allowed'}], def: 'off' },
   { key: 'edge2or12', label: '2 or 12 on edge',
     options: [{val:'none',label:'No requirement (default)'},{val:'1',label:'At least 1'},{val:'both',label:'Both'}], def: 'none' },
   { key: 'desert', label: 'Desert placement',
     options: [{val:'random',label:'Random (default)'},{val:'center',label:'Center'},{val:'ring',label:'2nd ring'},{val:'edge',label:'Edge'}], def: 'random' },
 ];
-// Rules that only apply in random number mode
+// Rules that only apply when numbers are placed randomly
 const RANDOM_ONLY_RULES = new Set(['redSep','twoTwelveSep','sameTouch','sameRes','edge2or12']);
+// Rules that only apply for 3-4 player boards (spiral doesn't exist for 5-6)
+const BOARD_34_ONLY_RULES = new Set(['numberMethod']);
 
 // Official spiral order: counter-clockwise around the outer ring starting at top-left,
 // then spiraling inward, ending at center.
@@ -302,38 +367,50 @@ function buildResourcePool() {
 
 function pickDesertIndex(rng) {
   switch (rules.desert) {
-    case 'center': return CENTER_HEX;
+    case 'center': return CENTER_HEX_LIST[Math.floor(rng() * CENTER_HEX_LIST.length)];
     case 'ring':   { const arr = [...SECOND_RING]; return arr[Math.floor(rng() * arr.length)]; }
     case 'edge':   { const arr = [...EDGE_HEXES];  return arr[Math.floor(rng() * arr.length)]; }
-    default:       return Math.floor(rng() * 19);
+    default:       return Math.floor(rng() * TOTAL_HEXES);
   }
 }
 
 function placeResources(rng) {
-  const desertIdx = pickDesertIndex(rng);
+  // 5-6 player has 2 deserts; place each per the setting, then fill remaining hexes randomly.
+  const desertCount = RESOURCE_COUNTS.desert;
+  const desertPositions = new Set();
+  while (desertPositions.size < desertCount) {
+    desertPositions.add(pickDesertIndex(rng));
+  }
+  const desertArr = [...desertPositions];
   const others = buildResourcePool().filter(r => r !== 'desert');
   shuffleInPlace(others, rng);
-  const resources = new Array(19);
-  resources[desertIdx] = 'desert';
+  const resources = new Array(TOTAL_HEXES);
+  for (const d of desertArr) resources[d] = 'desert';
   let oi = 0;
-  for (let i = 0; i < 19; i++) {
-    if (i === desertIdx) continue;
+  for (let i = 0; i < TOTAL_HEXES; i++) {
+    if (desertPositions.has(i)) continue;
     resources[i] = others[oi++];
   }
-  return { resources, desertIdx };
+  return { resources, desertPositions };
 }
 
-function placeNumbers(resources, desertIdx, rng) {
-  const order = shuffleInPlace([...Array(19).keys()].filter(i => i !== desertIdx), rng);
-  const placement = new Array(19).fill(null);
+function placeNumbers(resources, desertPositions, rng) {
+  // Place most-constrained hexes first (highest neighbor count).
+  const candidates = [...Array(TOTAL_HEXES).keys()].filter(i => !desertPositions.has(i));
+  shuffleInPlace(candidates, rng);
+  candidates.sort((a, b) => ADJACENCY[b].length - ADJACENCY[a].length);
+  const order = candidates;
+  // For forward-checking we need to know each hex's position in the order.
+  const orderPos = new Array(TOTAL_HEXES).fill(-1);
+  for (let i = 0; i < order.length; i++) orderPos[order[i]] = i;
+
+  const placement = new Array(TOTAL_HEXES).fill(null);
+  const usedResNum = new Set();
+  const enforceSameRes = rules.sameRes === 'off';
 
   function isValid(idx, num) {
-    if (rules.sameRes === 'off') {
-      const r = resources[idx];
-      for (let i = 0; i < 19; i++) {
-        if (i === idx) continue;
-        if (placement[i] === num && resources[i] === r) return false;
-      }
+    if (enforceSameRes) {
+      if (usedResNum.has(resources[idx] + '|' + num)) return false;
     }
     for (const adj of ADJACENCY[idx]) {
       const a = placement[adj];
@@ -346,44 +423,91 @@ function placeNumbers(resources, desertIdx, rng) {
     return true;
   }
 
+  // Forward check: after placing, verify every not-yet-placed hex has at least
+  // one candidate number left in the pool. If any hex has zero, this branch is dead.
+  // Returns true if the branch is still viable.
+  function forwardCheck(orderIdx, pool) {
+    // Count remaining copies of each number in the pool.
+    const poolCount = new Map();
+    for (const n of pool) poolCount.set(n, (poolCount.get(n) || 0) + 1);
+    // For each not-yet-placed hex, check at least one number in pool is valid there.
+    for (let i = orderIdx; i < order.length; i++) {
+      const hexIdx = order[i];
+      let anyValid = false;
+      for (const [num, count] of poolCount) {
+        if (count === 0) continue;
+        if (isValid(hexIdx, num)) { anyValid = true; break; }
+      }
+      if (!anyValid) return false;
+    }
+    return true;
+  }
+
+  // Sort pool so scarcer numbers get tried first (2 and 12 are rarest).
+  // This helps find placements for tight constraints before the pool fills up.
+  function orderByScarcity(pool, rng) {
+    const count = new Map();
+    for (const n of pool) count.set(n, (count.get(n) || 0) + 1);
+    // Randomize among equally-scarce numbers to keep boards varied.
+    const indices = [...pool.keys()];
+    shuffleInPlace(indices, rng);
+    indices.sort((a, b) => count.get(pool[a]) - count.get(pool[b]));
+    return indices;
+  }
+
+  const STEP_BUDGET = TOTAL_HEXES === 30 ? 60000 : 20000;
+  let steps = 0;
+
   function backtrack(orderIdx, pool) {
+    if (++steps > STEP_BUDGET) return 'timeout';
     if (orderIdx === order.length) return true;
     const hexIdx = order[orderIdx];
     const tried = new Set();
-    const indices = shuffleInPlace([...pool.keys()], rng);
+    const indices = orderByScarcity(pool, rng);
     for (const i of indices) {
       const num = pool[i];
       if (tried.has(num)) continue;
       tried.add(num);
       if (!isValid(hexIdx, num)) continue;
       placement[hexIdx] = num;
+      const key = resources[hexIdx] + '|' + num;
+      if (enforceSameRes) usedResNum.add(key);
       const next = pool.slice(0, i).concat(pool.slice(i + 1));
-      if (backtrack(orderIdx + 1, next)) return true;
+      // Forward-check: reject early if any remaining hex is now unassignable.
+      if (forwardCheck(orderIdx + 1, next)) {
+        const r = backtrack(orderIdx + 1, next);
+        if (r === true) return true;
+        if (r === 'timeout') return 'timeout';
+      }
       placement[hexIdx] = null;
+      if (enforceSameRes) usedResNum.delete(key);
     }
     return false;
   }
 
-  if (backtrack(0, NUMBER_TOKENS.slice())) return placement;
+  const result = backtrack(0, NUMBER_TOKENS.slice());
+  if (result === true) return placement;
   return null;
 }
 
 function edgeRequirementSatisfied(numbers) {
   if (rules.edge2or12 === 'none') return true;
-  let count = 0;
-  for (const i of EDGE_HEXES) if (numbers[i] === 2 || numbers[i] === 12) count++;
-  if (rules.edge2or12 === '1')    return count >= 1;
-  if (rules.edge2or12 === 'both') return count >= 2;
+  let has2 = false, has12 = false;
+  for (const i of EDGE_HEXES) {
+    if (numbers[i] === 2) has2 = true;
+    if (numbers[i] === 12) has12 = true;
+  }
+  if (rules.edge2or12 === '1')    return has2 || has12;
+  if (rules.edge2or12 === 'both') return has2 && has12;
   return true;
 }
 
-function placeNumbersSpiral(resources, desertIdx) {
-  // Walk SPIRAL_ORDER, skipping the desert hex, and assign letters A, B, C... in order.
-  // Each letter has a fixed number from SPIRAL_NUMBERS.
-  const placement = new Array(19).fill(null);
+function placeNumbersSpiral(resources, desertPositions) {
+  // Only used for 3-4 player boards.
+  const placement = new Array(TOTAL_HEXES).fill(null);
   let letterIdx = 0;
   for (const hexIdx of SPIRAL_ORDER) {
-    if (hexIdx === desertIdx) continue;
+    if (desertPositions.has(hexIdx)) continue;
     placement[hexIdx] = SPIRAL_NUMBERS[letterIdx];
     letterIdx++;
   }
@@ -392,19 +516,18 @@ function placeNumbersSpiral(resources, desertIdx) {
 
 function generateBoard(seed, maxAttempts = 200) {
   const rng = mulberry32(seed);
-  if (rules.numberMethod === 'spiral') {
-    // Spiral mode: only randomize resources & desert position. Numbers are deterministic
-    // once the desert position is fixed, so no per-rule constraints apply.
-    const { resources, desertIdx } = placeResources(rng);
-    const numbers = placeNumbersSpiral(resources, desertIdx);
-    return { resources, numbers, attempts: 1 };
+  const spiralAvailable = rules.boardSize === '34' && rules.numberMethod === 'spiral';
+  if (spiralAvailable) {
+    const { resources, desertPositions } = placeResources(rng);
+    const numbers = placeNumbersSpiral(resources, desertPositions);
+    return { resources, numbers, desertPositions, attempts: 1 };
   }
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const { resources, desertIdx } = placeResources(rng);
-    const numbers = placeNumbers(resources, desertIdx, rng);
+    const { resources, desertPositions } = placeResources(rng);
+    const numbers = placeNumbers(resources, desertPositions, rng);
     if (!numbers) continue;
     if (!edgeRequirementSatisfied(numbers)) continue;
-    return { resources, numbers, attempts: attempt + 1 };
+    return { resources, numbers, desertPositions, attempts: attempt + 1 };
   }
   return null;
 }
@@ -433,7 +556,7 @@ function renderBoard({ resources, numbers }) {
         <stop offset="60%" stop-color="rgba(255,255,255,0)"/>
       </radialGradient>
     </defs>`;
-  for (let i = 0; i < 19; i++) {
+  for (let i = 0; i < TOTAL_HEXES; i++) {
     const { x, y } = HEX_POS[i];
     const res = resources[i];
     html += `
@@ -443,7 +566,7 @@ function renderBoard({ resources, numbers }) {
         <text class="hex-label" y="${R - 14}">${RESOURCE_LABEL[res]}</text>
       </g>`;
   }
-  for (let i = 0; i < 19; i++) {
+  for (let i = 0; i < TOTAL_HEXES; i++) {
     if (numbers[i] === null) {
       const { x, y } = HEX_POS[i];
       html += `<text class="desert-mark" x="${x}" y="${y - 4}">desert</text>`;
@@ -473,10 +596,16 @@ function renderBoard({ resources, numbers }) {
 function renderRulesPanel() {
   const body = document.getElementById('rulesBody');
   let html = '';
+  const is56 = rules.boardSize === '56';
+  // In 5-6 player, spiral doesn't exist — force random.
+  if (is56 && rules.numberMethod === 'spiral') rules.numberMethod = 'random';
   const spiralActive = rules.numberMethod === 'spiral';
   for (const r of RULE_SCHEMA) {
-    const disabled = spiralActive && RANDOM_ONLY_RULES.has(r.key);
-    html += `<div class="rule${disabled ? ' disabled' : ''}"><div class="rule-label">${r.label}</div><div class="rule-options">`;
+    const disabledBySpiral = spiralActive && RANDOM_ONLY_RULES.has(r.key);
+    const disabledBy56     = is56 && BOARD_34_ONLY_RULES.has(r.key);
+    const disabled = disabledBySpiral || disabledBy56;
+    const noteClass = disabledBy56 ? ' disabled-56' : (disabledBySpiral ? ' disabled-spiral' : '');
+    html += `<div class="rule${disabled ? ' disabled' + noteClass : ''}"><div class="rule-label">${r.label}</div><div class="rule-options">`;
     for (const o of r.options) {
       const checked = rules[r.key] === o.val ? 'checked' : '';
       html += `<label><input type="radio" name="${r.key}" value="${o.val}" ${checked}><span>${o.label}</span></label>`;
@@ -488,17 +617,20 @@ function renderRulesPanel() {
   body.querySelectorAll('input[type=radio]').forEach(input => {
     input.addEventListener('change', () => {
       rules[input.name] = input.value;
-      // If number method changed, re-render so the disabled state updates
-      if (input.name === 'numberMethod') renderRulesPanel();
+      // Board size or number method change -> re-render disabled state
+      if (input.name === 'numberMethod' || input.name === 'boardSize') renderRulesPanel();
+      if (input.name === 'boardSize') { applyBoardSize(); go(); }
       updateRulesSummary();
       updateActiveRulesList();
     });
   });
   document.getElementById('resetRules').addEventListener('click', () => {
     rules = { ...DEFAULT_RULES };
+    applyBoardSize();
     renderRulesPanel();
     updateRulesSummary();
     updateActiveRulesList();
+    go();
   });
 }
 
@@ -510,12 +642,26 @@ function ruleDescription(r, val) {
   const o = r.options.find(x => x.val === val);
   return o ? o.label.replace(/ \(default\)$/, '') : val;
 }
+function updateResourceLegend() {
+  const el = document.getElementById('resourceLegend');
+  if (!el) return;
+  const order = ['forest','pasture','fields','hills','mountains','desert'];
+  const cssVarMap = {forest:'--forest',pasture:'--pasture',fields:'--fields',hills:'--hills',mountains:'--mountains',desert:'--desert'};
+  let html = '';
+  for (const k of order) {
+    html += `<span class="swatch"><i style="background:var(${cssVarMap[k]})"></i>${RESOURCE_LABEL[k]} ×${RESOURCE_COUNTS[k]}</span>`;
+  }
+  el.innerHTML = html;
+}
+
 function updateActiveRulesList() {
   const ul = document.getElementById('activeRules');
-  const spiralActive = rules.numberMethod === 'spiral';
+  const spiralActive = rules.numberMethod === 'spiral' && rules.boardSize === '34';
+  const is56 = rules.boardSize === '56';
   let html = '';
   for (const r of RULE_SCHEMA) {
     if (spiralActive && RANDOM_ONLY_RULES.has(r.key)) continue;
+    if (is56 && BOARD_34_ONLY_RULES.has(r.key)) continue;
     html += `<li><strong>${r.label}:</strong> ${ruleDescription(r, rules[r.key])}</li>`;
   }
   ul.innerHTML = html;
@@ -540,6 +686,7 @@ function go(seed) {
   renderBoard(result);
 }
 
+applyBoardSize();
 renderRulesPanel();
 updateRulesSummary();
 updateActiveRulesList();
