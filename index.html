@@ -430,9 +430,6 @@ function placeNumbers(resources, desertPositions, rng) {
   shuffleInPlace(candidates, rng);
   candidates.sort((a, b) => ADJACENCY[b].length - ADJACENCY[a].length);
   const order = candidates;
-  // For forward-checking we need to know each hex's position in the order.
-  const orderPos = new Array(TOTAL_HEXES).fill(-1);
-  for (let i = 0; i < order.length; i++) orderPos[order[i]] = i;
 
   const placement = new Array(TOTAL_HEXES).fill(null);
   const usedResNum = new Set();
@@ -453,38 +450,6 @@ function placeNumbers(resources, desertPositions, rng) {
     return true;
   }
 
-  // Forward check: after placing, verify every not-yet-placed hex has at least
-  // one candidate number left in the pool. If any hex has zero, this branch is dead.
-  // Returns true if the branch is still viable.
-  function forwardCheck(orderIdx, pool) {
-    // Count remaining copies of each number in the pool.
-    const poolCount = new Map();
-    for (const n of pool) poolCount.set(n, (poolCount.get(n) || 0) + 1);
-    // For each not-yet-placed hex, check at least one number in pool is valid there.
-    for (let i = orderIdx; i < order.length; i++) {
-      const hexIdx = order[i];
-      let anyValid = false;
-      for (const [num, count] of poolCount) {
-        if (count === 0) continue;
-        if (isValid(hexIdx, num)) { anyValid = true; break; }
-      }
-      if (!anyValid) return false;
-    }
-    return true;
-  }
-
-  // Sort pool so scarcer numbers get tried first (2 and 12 are rarest).
-  // This helps find placements for tight constraints before the pool fills up.
-  function orderByScarcity(pool, rng) {
-    const count = new Map();
-    for (const n of pool) count.set(n, (count.get(n) || 0) + 1);
-    // Randomize among equally-scarce numbers to keep boards varied.
-    const indices = [...pool.keys()];
-    shuffleInPlace(indices, rng);
-    indices.sort((a, b) => count.get(pool[a]) - count.get(pool[b]));
-    return indices;
-  }
-
   const STEP_BUDGET = TOTAL_HEXES === 30 ? 60000 : 20000;
   let steps = 0;
 
@@ -493,7 +458,8 @@ function placeNumbers(resources, desertPositions, rng) {
     if (orderIdx === order.length) return true;
     const hexIdx = order[orderIdx];
     const tried = new Set();
-    const indices = orderByScarcity(pool, rng);
+    // Try pool entries in random order — no scarcity bias.
+    const indices = shuffleInPlace([...pool.keys()], rng);
     for (const i of indices) {
       const num = pool[i];
       if (tried.has(num)) continue;
@@ -503,12 +469,9 @@ function placeNumbers(resources, desertPositions, rng) {
       const key = resources[hexIdx] + '|' + num;
       if (enforceSameRes) usedResNum.add(key);
       const next = pool.slice(0, i).concat(pool.slice(i + 1));
-      // Forward-check: reject early if any remaining hex is now unassignable.
-      if (forwardCheck(orderIdx + 1, next)) {
-        const r = backtrack(orderIdx + 1, next);
-        if (r === true) return true;
-        if (r === 'timeout') return 'timeout';
-      }
+      const r = backtrack(orderIdx + 1, next);
+      if (r === true) return true;
+      if (r === 'timeout') return 'timeout';
       placement[hexIdx] = null;
       if (enforceSameRes) usedResNum.delete(key);
     }
