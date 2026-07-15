@@ -187,7 +187,7 @@
   </div>
 
   <div class="board-card">
-    <svg class="board" id="board" viewBox="-230 -210 460 420" aria-label="Catan board"></svg>
+    <svg class="board" id="board" viewBox="-270 -250 540 500" aria-label="Catan board"></svg>
   </div>
 
   <div class="legend">
@@ -253,7 +253,7 @@ let RESOURCE_COUNTS = RESOURCE_COUNTS_34;
 let NUMBER_TOKENS   = NUMBER_TOKENS_34;
 let HEX_POS = [];
 let TOTAL_HEXES = 19;
-let BOARD_VIEWBOX = "-230 -210 460 420";
+let BOARD_VIEWBOX = "-270 -250 540 500";
 
 function applyBoardSize() {
   if (rules && rules.boardSize === '56') {
@@ -265,7 +265,7 @@ function applyBoardSize() {
     NUMBER_TOKENS = NUMBER_TOKENS_56;
     HEX_POS = buildHexPositions([3,4,5,6,5,4,3]);
     TOTAL_HEXES = 30;
-    BOARD_VIEWBOX = "-290 -280 580 560";
+    BOARD_VIEWBOX = "-330 -320 660 640";
   } else {
     ADJACENCY = ADJACENCY_34;
     EDGE_HEXES = EDGE_HEXES_34;
@@ -275,7 +275,7 @@ function applyBoardSize() {
     NUMBER_TOKENS = NUMBER_TOKENS_34;
     HEX_POS = buildHexPositions([3,4,5,4,3]);
     TOTAL_HEXES = 19;
-    BOARD_VIEWBOX = "-230 -210 460 420";
+    BOARD_VIEWBOX = "-270 -250 540 500";
   }
   const svg = document.getElementById('board');
   if (svg) svg.setAttribute('viewBox', BOARD_VIEWBOX);
@@ -324,11 +324,13 @@ const RULE_SCHEMA = [
     options: [{val:'none',label:'No requirement (default)'},{val:'1',label:'At least 1'},{val:'both',label:'Both'}], def: 'none' },
   { key: 'desert', label: 'Desert placement',
     options: [{val:'random',label:'Random (default)'},{val:'center',label:'Center'},{val:'ring',label:'2nd ring'},{val:'edge',label:'Edge'}], def: 'random' },
+  { key: 'ports', label: 'Ports',
+    options: [{val:'standard',label:'Standard (default)'},{val:'random',label:'Randomized'}], def: 'standard' },
 ];
 // Rules that only apply when numbers are placed randomly
 const RANDOM_ONLY_RULES = new Set(['redSep','twoTwelveSep','sameTouch','sameRes','edge2or12']);
-// Rules that only apply for 3-4 player boards (spiral doesn't exist for 5-6)
-const BOARD_34_ONLY_RULES = new Set(['numberMethod']);
+// Rules that only apply for 3-4 player boards
+const BOARD_34_ONLY_RULES = new Set(['numberMethod','ports']);
 
 // Official spiral order: counter-clockwise around the outer ring starting at top-left,
 // then spiraling inward, ending at center.
@@ -340,6 +342,34 @@ const BOARD_34_ONLY_RULES = new Set(['numberMethod']);
 const SPIRAL_ORDER = [0, 3, 7, 12, 16, 17, 18, 15, 11, 6, 2, 1, 4, 8, 13, 14, 10, 5, 9];
 // Letters A–R map to these numbers in order (official 3–4 player Catan set):
 const SPIRAL_NUMBERS = [5, 2, 6, 3, 8, 10, 9, 12, 11, 4, 8, 10, 9, 4, 5, 6, 3, 11];
+
+// Port positions on the 3-4 player board.
+// Numbering the 30 coastal edges 1..30 starting from the bottom-left edge (hex 16 c3-4)
+// and walking right/clockwise around the coast, the 9 ports sit on:
+//   edges 1, 4, 8, 11, 14, 18, 21, 24, 28
+// This is the standard published Catan layout.
+// Corner numbering (pointy-top): 0=top(N), 1=upper-right(NE), 2=lower-right(SE),
+//                                 3=bottom(S), 4=lower-left(SW), 5=upper-left(NW)
+const PORT_POSITIONS_34 = [
+  { hex: 16, corners: [3, 4] }, // slot 0 — edge 1  — bottom-left    — 3:1
+  { hex: 17, corners: [2, 3] }, // slot 1 — edge 4  — bottom-right   — 3:1
+  { hex: 15, corners: [2, 3] }, // slot 2 — edge 8  — right-lower    — sheep
+  { hex: 11, corners: [1, 2] }, // slot 3 — edge 11 — right-middle   — 3:1
+  { hex: 6,  corners: [0, 1] }, // slot 4 — edge 14 — right-upper    — ore
+  { hex: 1,  corners: [0, 1] }, // slot 5 — edge 18 — top-right      — wheat
+  { hex: 0,  corners: [5, 0] }, // slot 6 — edge 21 — top-left       — 3:1
+  { hex: 3,  corners: [4, 5] }, // slot 7 — edge 24 — left-upper     — wood
+  { hex: 12, corners: [4, 5] }, // slot 8 — edge 28 — left-lower     — brick
+];
+// Standard port assignment (matches user's spec):
+// two 3:1 at bottom (adjacent), then sheep, 3:1, ore, wheat, 3:1, wood, brick
+// Following CCW order starting from bottom-right.
+// Note: internal resource names differ from Catan display names:
+//   forest = wood, pasture = sheep, fields = wheat, hills = brick, mountains = ore
+const PORT_STANDARD_TYPES = ['3:1','3:1','pasture','3:1','mountains','fields','3:1','forest','hills'];
+// All 9 port types for randomization (4× 3:1 + 5× 2:1, one per resource)
+const PORT_ALL_TYPES = ['3:1','3:1','3:1','3:1','forest','pasture','fields','hills','mountains'];
+
 const DEFAULT_RULES = Object.fromEntries(RULE_SCHEMA.map(r => [r.key, r.def]));
 let rules = { ...DEFAULT_RULES };
 
@@ -514,20 +544,31 @@ function placeNumbersSpiral(resources, desertPositions) {
   return placement;
 }
 
+function generatePorts(rng) {
+  // Only for 3-4 player boards.
+  if (rules.boardSize !== '34') return null;
+  const types = rules.ports === 'random'
+    ? shuffleInPlace(PORT_ALL_TYPES.slice(), rng)
+    : PORT_STANDARD_TYPES.slice();
+  return PORT_POSITIONS_34.map((pos, i) => ({ ...pos, type: types[i] }));
+}
+
 function generateBoard(seed, maxAttempts = 200) {
   const rng = mulberry32(seed);
   const spiralAvailable = rules.boardSize === '34' && rules.numberMethod === 'spiral';
   if (spiralAvailable) {
     const { resources, desertPositions } = placeResources(rng);
     const numbers = placeNumbersSpiral(resources, desertPositions);
-    return { resources, numbers, desertPositions, attempts: 1 };
+    const ports = generatePorts(rng);
+    return { resources, numbers, desertPositions, ports, attempts: 1 };
   }
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const { resources, desertPositions } = placeResources(rng);
     const numbers = placeNumbers(resources, desertPositions, rng);
     if (!numbers) continue;
     if (!edgeRequirementSatisfied(numbers)) continue;
-    return { resources, numbers, desertPositions, attempts: attempt + 1 };
+    const ports = generatePorts(rng);
+    return { resources, numbers, desertPositions, ports, attempts: attempt + 1 };
   }
   return null;
 }
@@ -541,7 +582,7 @@ function hexPath(cx, cy, r) {
   return pts.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(' ');
 }
 
-function renderBoard({ resources, numbers }) {
+function renderBoard({ resources, numbers, ports }) {
   const svg = document.getElementById('board');
   let html = `
     <defs>
@@ -590,6 +631,51 @@ function renderBoard({ resources, numbers }) {
         ${pipMarkup}
       </g>`;
   }
+  // Ports (3-4 player only)
+  if (ports && ports.length) {
+    const cornerPos = (hexIdx, i) => {
+      const h = HEX_POS[hexIdx];
+      const a = Math.PI/180 * (-90 + 60*i);
+      return { x: h.x + R*Math.cos(a), y: h.y + R*Math.sin(a) };
+    };
+    const PORT_ICON = {
+      'forest':    '🌲',
+      'pasture':   '🐑',
+      'fields':    '🌾',
+      'hills':     '🧱',
+      'mountains': '⛰',
+    };
+    for (const p of ports) {
+      const c1 = cornerPos(p.hex, p.corners[0]);
+      const c2 = cornerPos(p.hex, p.corners[1]);
+      const midEdge = { x: (c1.x + c2.x)/2, y: (c1.y + c2.y)/2 };
+      const hexCenter = HEX_POS[p.hex];
+      const dx = midEdge.x - hexCenter.x;
+      const dy = midEdge.y - hexCenter.y;
+      const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+      const push = 22;
+      const cx = midEdge.x + (dx/dist) * push;
+      const cy = midEdge.y + (dy/dist) * push;
+      const is31 = p.type === '3:1';
+      if (is31) {
+        html += `<g class="port" transform="translate(${cx.toFixed(1)},${cy.toFixed(1)})">
+          <text text-anchor="middle" dominant-baseline="central"
+                font-family="Fraunces, serif" font-weight="800" font-size="16" fill="#5a4433"
+                letter-spacing="0.02em">3:1</text>
+        </g>`;
+      } else {
+        html += `<g class="port" transform="translate(${cx.toFixed(1)},${cy.toFixed(1)})">
+          <text text-anchor="middle" dominant-baseline="central"
+                font-family="system-ui, 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif"
+                font-size="18">${PORT_ICON[p.type]}</text>
+          <text y="14" text-anchor="middle" dominant-baseline="central"
+                font-family="Fraunces, serif" font-weight="700" font-size="10" fill="#5a4433"
+                letter-spacing="0.04em">2:1</text>
+        </g>`;
+      }
+    }
+  }
+
   svg.innerHTML = html;
 }
 
