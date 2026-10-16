@@ -446,14 +446,12 @@ function clampDialsToBoard() {
 }
 
 // ===== US Catan 2026 tournament preset =====
-// Derived from 20 boards used at the 2026 US Regionals, Nationals and Masters:
-// 19/20 within 7 pips of balance, 19/20 with ≤6 same-resource touches,
-// 18/20 with 6s/8s on four different resources, 18/20 with no spot over 12 pips.
+// Tuned on the 27 included US tournament boards in data/tournament_boards.json (2021–2026).
+// The caps are the loosest limits that still allow every one of those boards.
 const US2026 = {
   advanced: 'on', boardSize: '34', numberMethod: 'random',
   redSep: 'on', twoTwelveSep: 'on', sameTouch: 'off', sameRes: 'off',
   edge2or12: 'none', desert: 'random', ports: 'standard',
-  // Loosest caps that still allow every included tournament board (data/tournament_boards.json).
   pipSpread: 8, resAdj: 7, redPerRes: 2, maxInter: 13,
 };
 const presetActive = () => Object.entries(US2026).every(([k, v]) => rules[k] === v);
@@ -670,13 +668,7 @@ function boardStats(resources, numbers) {
     resAdj: sameResourcePairs(resources),
     redPerRes: Math.max(...Object.values(reds)),
     maxInter: bestInter, spots12,
-    top8Avg: spotTotals(numbers).slice(0, 8).reduce((a, b) => a + b, 0) / 8,
-    poorest: Math.min(...pv),
   };
-}
-function spotTotals(numbers) {
-  return VERTICES.map(tri => tri.reduce((t, h) => t + (numbers[h] === null ? 0 : PIP_COUNT[numbers[h]]), 0))
-                 .sort((a, b) => b - a);
 }
 const resourceDialsOk = resources => dialOff(DIAL_SCHEMA[1]) || sameResourcePairs(resources) <= rules.resAdj;
 const pipBalanceOk = (resources, numbers) =>
@@ -725,24 +717,24 @@ function generateBoard(seed, maxAttempts = 400) {
   }
   if (!presetActive()) return generateCandidate(rng, maxAttempts);
   // US Catan 2026, in two steps:
-  // 1. Acceptance: keep drawing valid boards, accepting each with odds set by its balance score, so the
-  //    candidates lean as balanced as real tournament boards do.
-  // 2. Selection: pick one real tournament board at random and keep the accepted candidate closest to it,
-  //    out of 50. Matching a random real board (not the average one) keeps the variety real boards have.
-  const target = TOURNAMENT_PROFILES[Math.floor(rng() * TOURNAMENT_PROFILES.length)];
-  let best = null, bestD = Infinity, draws = 0;
-  for (let k = 0; k < PRESET_CANDIDATES; k++) {
-    let accepted = null;
-    while (!accepted) {
-      if (++draws > TOURNAMENT_MAX_DRAWS) return best ? { ...best, candidates: draws } : null;
-      const c = generateCandidate(rng, maxAttempts);
-      if (!c) return null;
-      if (rng() < tournamentAcceptance(c)) accepted = c;
-    }
-    const d = profileDistance(boardStats(accepted.resources, accepted.numbers), target);
-    if (d < bestD) { bestD = d; best = accepted; }
+  // 1. Acceptance: keep drawing valid boards, accepting each with odds set by its balance score,
+  //    until there are 100 candidates that lean as balanced as real tournament boards.
+  // 2. Weighted pick: give each candidate a weight for how under-represented its type is compared with
+  //    the real boards, and pick one with odds proportional to its weight. Across many boards this
+  //    reproduces the real distribution (not just the average board), and a seed always gives the same board.
+  const cands = [], weights = [];
+  let draws = 0;
+  while (cands.length < PRESET_CANDIDATES) {
+    if (++draws > TOURNAMENT_MAX_DRAWS) break;
+    const c = generateCandidate(rng, maxAttempts);
+    if (!c) return null;
+    if (rng() < tournamentAcceptance(c)) { cands.push(c); weights.push(distributionWeight(c)); }
   }
-  return { ...best, candidates: draws };
+  if (!cands.length) return null;
+  const total = weights.reduce((a, b) => a + b, 0);
+  let r = rng() * total, pick = cands.length - 1;
+  for (let i = 0; i < cands.length; i++) { r -= weights[i]; if (r <= 0) { pick = i; break; } }
+  return { ...cands[pick], candidates: cands.length };
 }
 
 // Balance score: spots worth 12+ pips, plus half the pip spread, plus half the same-resource touches.
@@ -750,51 +742,35 @@ function generateBoard(seed, maxAttempts = 400) {
 // in data/tournament_boards.json. Lower score = more balanced = accepted more often; unlisted high scores = 0.
 const TOURNAMENT_ACCEPT = {3.5: 1, 4: 1, 4.5: 0.603, 5: 0.415, 5.5: 0.252, 6: 0.168, 6.5: 0.11, 7: 0.073, 7.5: 0.047, 8: 0.03, 8.5: 0.018, 9: 0.013, 9.5: 0.011, 10: 0.01, 10.5: 0.006, 11: 0.003};
 const ACCEPT_ALWAYS_BELOW = 3.5;   // scores this low are always accepted
-const TOURNAMENT_MAX_DRAWS = 20000;   // safety stop only
+const TOURNAMENT_MAX_DRAWS = 20000;   // safety stop only (a board needs about 1,500 draws)
 function balanceScore(st) { return st.spots12 + 0.5 * st.pipSpread + 0.5 * st.resAdj; }
 function tournamentAcceptance({ resources, numbers }) {
   const sc = balanceScore(boardStats(resources, numbers));
   return sc < ACCEPT_ALWAYS_BELOW ? 1 : (TOURNAMENT_ACCEPT[sc] || 0);
 }
 
-// Profiles of the 27 included tournament boards (data/tournament_boards.json).
-// [pipSpread, sameResTouches, spots12+, bestSpot, top8Avg, poorestPips, max6/8PerResource, brick, ore, wood, sheep, wheat pips]
-const TOURNAMENT_PROFILES = [
-  [1, 5, 4, 13, 11.625, 11, 2, 11, 11, 12, 12, 12], // N1
-  [5, 3, 3, 12, 11.125, 9, 1, 12, 11, 9, 12, 14], // N2
-  [3, 4, 2, 12, 11.125, 10, 1, 10, 10, 13, 12, 13], // N3
-  [5, 5, 1, 12, 11.125, 9, 1, 9, 12, 12, 14, 11], // N4
-  [4, 4, 1, 12, 10.625, 9, 1, 11, 12, 13, 9, 13], // N5
-  [6, 5, 0, 11, 10.25, 8, 1, 8, 11, 12, 14, 13], // R1
-  [5, 2, 0, 11, 10.625, 9, 1, 9, 11, 13, 14, 11], // R2
-  [3, 2, 0, 11, 10.5, 10, 1, 10, 11, 12, 13, 12], // R3
-  [7, 6, 1, 12, 10.75, 8, 1, 8, 10, 13, 12, 15], // B1
-  [2, 2, 0, 11, 10, 11, 1, 11, 11, 11, 13, 12], // B2
-  [5, 3, 0, 11, 10.875, 9, 1, 9, 10, 13, 14, 12], // B3
-  [6, 5, 0, 11, 10.375, 8, 1, 8, 11, 12, 14, 13], // B4
-  [3, 6, 2, 12, 11.125, 10, 1, 11, 12, 12, 10, 13], // B5
-  [5, 4, 1, 12, 10.75, 9, 1, 9, 11, 11, 14, 13], // B6
-  [5, 2, 3, 13, 11.625, 9, 2, 9, 11, 14, 14, 10], // B7
-  [4, 2, 0, 11, 10.625, 10, 1, 10, 10, 11, 14, 13], // B8
-  [7, 2, 0, 11, 10.375, 8, 1, 8, 10, 12, 15, 13], // B9
-  [5, 6, 0, 11, 10.125, 9, 1, 9, 11, 13, 11, 14], // B10
-  [4, 4, 2, 12, 10.875, 10, 1, 10, 11, 12, 14, 11], // B11
-  [2, 7, 1, 12, 10.75, 11, 1, 13, 12, 11, 11, 11], // B12
-  [3, 3, 0, 11, 10.625, 10, 1, 12, 10, 13, 10, 13], // H1
-  [4, 2, 0, 11, 10.375, 10, 1, 10, 11, 14, 10, 13], // H2
-  [6, 3, 0, 11, 10.5, 9, 1, 9, 9, 12, 13, 15], // H3
-  [3, 3, 5, 12, 11.375, 10, 1, 10, 11, 12, 13, 12], // H5
-  [1, 2, 0, 11, 10.125, 11, 1, 12, 11, 11, 12, 12], // H6
-  [8, 3, 4, 13, 11.25, 9, 2, 9, 11, 10, 17, 11], // H7
-  [6, 7, 1, 12, 10.5, 9, 1, 10, 9, 12, 15, 12], // H8
-];
-const PROFILE_SD = [1.767, 1.618, 1.458, 0.675, 0.432, 0.916, 0.314, 1.343, 0.786, 1.105, 1.806, 1.198];
-const PROFILE_WEIGHT = [1, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1];   // clumping, 12+ spots and best spot count double
-const PRESET_CANDIDATES = 50;
-function profileDistance(st, profile) {
-  const f = [st.pipSpread, st.resAdj, st.spots12, st.maxInter, st.top8Avg, st.poorest, st.redPerRes,
-             st.pips.hills, st.pips.mountains, st.pips.forest, st.pips.pasture, st.pips.fields];
-  return f.reduce((sum, v, i) => sum + PROFILE_WEIGHT[i] * ((v - profile[i]) / PROFILE_SD[i]) ** 2, 0);
+// Weighted pick: one factor per balance measure and value, fitted (iterative proportional fitting) on
+// 15,000 accepted boards so the weighted mix matches the 27 real boards on each measure:
+// best spot, spots worth 12+, pip spread, same-resource touches, most 6/8s on one resource, brick and ore pips.
+const PRESET_CANDIDATES = 100;
+const DIST_WEIGHT = {
+  maxInter: {11: 1, 12: 0.3288, 13: 0.1666},
+  spots12: {0: 0.2451, 1: 0.2195, 2: 0.1634, 3: 0.2759, 4: 0.8999, 5: 1},
+  pipSpread: {1: 1, 2: 0.5054, 3: 0.3014, 4: 0.1918, 5: 0.1892, 6: 0.1341, 7: 0.1972, 8: 0.1922},
+  resAdj: {1: 0.02947, 2: 1, 3: 0.3387, 4: 0.1728, 5: 0.1474, 6: 0.1638, 7: 0.1708},
+  redPerRes: {1: 1, 2: 0.1584},
+  brick: {7: 0.0221, 8: 1, 9: 0.6466, 10: 0.3417, 11: 0.1584, 12: 0.1678, 13: 0.2191},
+  ore: {8: 0.05972, 9: 0.4499, 10: 0.6693, 11: 1, 12: 0.4334, 13: 0.05989},
+};
+const clampTo = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+function distributionWeight({ resources, numbers }) {
+  const st = boardStats(resources, numbers);
+  const f = {
+    maxInter: clampTo(st.maxInter, 11, 13), spots12: Math.min(st.spots12, 5),
+    pipSpread: clampTo(st.pipSpread, 1, 8), resAdj: clampTo(st.resAdj, 1, 7), redPerRes: st.redPerRes,
+    brick: clampTo(st.pips.hills, 7, 13), ore: clampTo(st.pips.mountains, 8, 13),
+  };
+  return Object.entries(f).reduce((w, [k, v]) => w * (DIST_WEIGHT[k][v] ?? 0), 1);
 }
 
 // One board that satisfies every active rule and dial.
@@ -1123,7 +1099,7 @@ function go(seed) {
   }
   seedEl.textContent = s.toString(16).padStart(8, '0');
   metaEl.textContent = result.candidates
-    ? `Closest of ${PRESET_CANDIDATES} tournament-style boards to a real tournament board.`
+    ? `Picked from ${result.candidates} tournament-style boards to match the real tournament mix.`
     : `Solved in ${result.attempts} ${result.attempts === 1 ? 'try' : 'tries'}.`;
   renderBoard(result);
   renderBoardStats(result);
