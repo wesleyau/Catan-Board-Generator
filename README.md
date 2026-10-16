@@ -49,14 +49,17 @@ Resource spreading also applies in spiral mode; the other three only apply to ra
  
 ### US Catan 2026 preset
  
-The first switch under Advanced rules sets every rule and dial, tuned to try to produce boards with the same balance as the 2026 US Catan Regionals, Nationals and Masters boards (based on 20 tournament boards):
+The first switch under Advanced rules sets every rule and dial, tuned to try to produce boards with the same balance as the 2026 US Catan Regionals, Nationals and Masters boards (tuned on the 27 included boards in the [board dataset](data/)):
  
 - Your four default placement rules, standard ports, random desert
-- Pip balance ≤ 7 · same-resource touches ≤ 6 · 6s/8s all on different resources · no spot over 12 pips
-With the preset on, the generator also matches the *spread* of tournament boards, not just their limits. It keeps drawing valid boards and accepts each with odds based on a balance score (spots worth 12+ pips, plus half the pip spread, plus half the same-resource touches). The odds were calibrated so accepted boards reproduce the score distribution of the 20 tournament boards. A board usually takes about 6 candidates (median), around 25 ms on average.
+- Pip balance ≤ 8 · same-resource touches ≤ 7 · at most two 6s/8s on one resource · best spot ≤ 13 pips (the loosest limits that still allow every real board)
+With the preset on, the generator also matches how real boards are *distributed*, not just their limits, in two steps:
+ 
+1. **Acceptance.** It keeps drawing valid boards and accepts each with odds based on a balance score (spots worth 12+ pips, plus half the pip spread, plus half the same-resource touches). The odds are calibrated so accepted boards lean as balanced as real tournament boards.
+2. **Selection.** It picks one real tournament board at random and keeps the accepted board closest to it, out of 50, comparing 12 balance measures. Matching a random real board, rather than the average one, keeps the variety real boards have.
+In a test of 6,000 boards, none of 15 balance measures differed significantly from the real boards. A board takes about 100 ms.
  
 If you change any setting, the preset switch turns off. Share links copied while the preset is on include `&preset=us2026`, so the board opens with the preset applied.
-
 ## Ports (3–4 player)
  
 Every 3–4 board includes 9 ports on the coast — **4 generic 3:1 ports** and **5 resource-specific 2:1 ports** (one for each of wood, sheep, wheat, brick, ore). Two options:
