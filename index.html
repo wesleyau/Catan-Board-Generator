@@ -125,6 +125,55 @@
   .rule-options label:hover span { border-color: var(--ink); }
   .rules-actions { margin-top: 14px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
+  /* Tournament preset switch */
+  .preset {
+    display: flex; gap: 12px; align-items: flex-start; cursor: pointer;
+    margin: 12px 0 4px; padding: 12px 14px; border-radius: 12px;
+    border: 1px solid #c9b88e; background: rgba(255,255,255,.45);
+  }
+  .preset.on { border-color: var(--accent); background: rgba(168,51,31,.07); }
+  .preset input { position: absolute; opacity: 0; pointer-events: none; }
+  .preset .switch {
+    flex: none; width: 40px; height: 22px; border-radius: 999px; margin-top: 1px;
+    background: #cdbb92; position: relative; transition: background .15s ease;
+  }
+  .preset .switch::after {
+    content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px;
+    border-radius: 50%; background: #fff; transition: transform .15s ease;
+    box-shadow: 0 1px 2px rgba(0,0,0,.3);
+  }
+  .preset.on .switch { background: var(--accent); }
+  .preset.on .switch::after { transform: translateX(18px); }
+  .preset input:focus-visible + .switch { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .preset-title { font-weight: 600; font-size: 14px; }
+  .preset-note { font-size: 12px; color: var(--ink-soft); margin-top: 2px; line-height: 1.4; }
+
+  .advanced-body { margin-left: 14px; padding-left: 14px; border-left: 2px solid rgba(168,51,31,.35); }
+  .advanced-body > .preset { margin-top: 8px; }
+  /* Balance dials */
+  .rules-section {
+    font-family: "Fraunces", serif; font-weight: 600; font-size: 13px;
+    letter-spacing: .06em; text-transform: uppercase; color: var(--rule);
+    margin: 18px 0 2px;
+  }
+  .dial-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .dial-value {
+    font-variant-numeric: tabular-nums; font-weight: 600; font-size: 13px;
+    padding: 2px 9px; border-radius: 999px; background: var(--ink); color: #f7efd9; white-space: nowrap;
+  }
+  .dial-value.off { background: transparent; color: var(--ink-soft); border: 1px solid #c9b88e; }
+  .dial-help { font-size: 12px; color: var(--ink-soft); margin: 2px 0 8px; line-height: 1.4; }
+  .dial input[type=range] { width: 100%; accent-color: var(--accent); margin: 0; }
+  .dial-scale { display: flex; justify-content: space-between; font-size: 11px; color: var(--rule); margin-top: 2px; }
+
+  /* Board stats */
+  .stats-block { grid-column: 1 / -1; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+  .stat { background: rgba(255,255,255,.4); border: 1px solid #d6c39a; border-radius: 10px; padding: 8px 10px; }
+  .stat b { display: block; font-family: "Fraunces", serif; font-size: 20px; font-variant-numeric: tabular-nums; }
+  .stat span { font-size: 12px; color: var(--ink-soft); }
+  .stat small { display: block; font-size: 11px; color: var(--rule); margin-top: 2px; }
+
   .board-card {
     background: linear-gradient(180deg, #fbf2db, #efe2bf);
     border: 1px solid #c9b88e; border-radius: 18px; padding: 14px;
@@ -199,6 +248,10 @@
       <h2>Resources</h2>
       <div class="swatches" id="resourceLegend"></div>
     </div>
+    <div class="stats-block">
+      <h2>This board</h2>
+      <div class="stats" id="boardStats"></div>
+    </div>
   </div>
 
   <footer>Created by Wesley Au · Send any suggestions to <a href="mailto:aucwesley@gmail.com" style="color:inherit;">aucwesley@gmail.com</a></footer>
@@ -256,6 +309,9 @@ let TOTAL_HEXES = 19;
 let BOARD_VIEWBOX = "-270 -250 540 500";
 
 function applyBoardSize() {
+  // Remember which dials were off so they stay off when the board size changes their range.
+  const wasOff = (typeof rules !== 'undefined' && typeof DIAL_SCHEMA !== 'undefined')
+    ? DIAL_SCHEMA.filter(d => rules[d.key] === undefined || rules[d.key] >= d.off()) : [];
   if (rules && rules.boardSize === '56') {
     ADJACENCY = ADJACENCY_56;
     EDGE_HEXES = EDGE_HEXES_56;
@@ -279,7 +335,29 @@ function applyBoardSize() {
   }
   const svg = document.getElementById('board');
   if (svg) svg.setAttribute('viewBox', BOARD_VIEWBOX);
+  computeVertices();
+  for (const d of wasOff) rules[d.key] = d.off();
+  clampDialsToBoard();
   updateResourceLegend();
+}
+
+// Inland intersections = every triple of mutually adjacent hexes.
+let VERTICES = [];        // [[a,b,c], ...]
+let VERTS_BY_HEX = [];    // hex index -> list of vertex indices touching it
+function computeVertices() {
+  VERTICES = [];
+  VERTS_BY_HEX = Array.from({ length: TOTAL_HEXES }, () => []);
+  for (let a = 0; a < TOTAL_HEXES; a++) {
+    for (const b of ADJACENCY[a]) {
+      if (b <= a) continue;
+      for (const c of ADJACENCY[b]) {
+        if (c <= b || !ADJACENCY[a].includes(c)) continue;
+        const v = VERTICES.length;
+        VERTICES.push([a, b, c]);
+        VERTS_BY_HEX[a].push(v); VERTS_BY_HEX[b].push(v); VERTS_BY_HEX[c].push(v);
+      }
+    }
+  }
 }
 
 const R = 50;
@@ -332,6 +410,51 @@ const RANDOM_ONLY_RULES = new Set(['redSep','twoTwelveSep','sameTouch','sameRes'
 // Rules that only apply for 3-4 player boards
 const BOARD_34_ONLY_RULES = new Set(['numberMethod','ports']);
 
+// ===== Balance dials =====
+// Each dial is a slider. Its last notch (off value) means "no limit".
+// Number-based dials only apply in random number mode; resource spreading also applies in spiral mode.
+const maxPossibleSpot = (r = rules) => (r.redSep === 'on' ? 13 : 15);
+const redTokenCount = () => NUMBER_TOKENS.filter(n => n === 6 || n === 8).length;
+const DIAL_SCHEMA = [
+  { key: 'pipSpread', label: 'Resource pip balance',
+    help: 'Add up the pips on each resource. The richest and poorest resource can differ by at most this much.',
+    min: () => 1, max: () => 13, off: () => 13, unit: n => `≤ ${n} pips apart`, numbers: true },
+  { key: 'resAdj', label: 'Resource spreading',
+    help: 'Max number of places where two hexes of the same resource touch (e.g. wheat next to wheat). Lower = more spread out.',
+    min: () => 0, max: () => 15, off: () => 15, unit: n => `≤ ${n} touching pairs`, numbers: false },
+  { key: 'redPerRes', label: '6s and 8s per resource',
+    help: 'Max red numbers (6/8) on any single resource. 1 = every 6 and 8 is on a different resource.',
+    min: () => Math.ceil(redTokenCount() / 5), max: () => redTokenCount(), off: () => redTokenCount(),
+    unit: n => n === 1 ? 'all different' : `≤ ${n} per resource`, numbers: true },
+  // With 6/8 separation on, the richest possible spot is 5+4+4 = 13 pips, so 13 is the "no limit" notch.
+  // If 6s and 8s may touch, three reds can meet (5+5+5 = 15).
+  { key: 'maxInter', label: 'Best settlement spot',
+    help: 'Max total pips where three hexes meet. Lower = flatter opening draft with no monster spot.',
+    min: () => 10, max: r => maxPossibleSpot(r), off: r => maxPossibleSpot(r), unit: n => `≤ ${n} pips`, numbers: true },
+];
+const advancedOn = () => rules.advanced === 'on';
+const dialOff = d => !advancedOn() || rules[d.key] >= d.off();
+function clampDialsToBoard() {
+  if (typeof rules === 'undefined') return;
+  for (const d of DIAL_SCHEMA) {
+    const v = rules[d.key];
+    if (v === undefined || v === null || v === 'off') rules[d.key] = d.off();
+    else rules[d.key] = Math.min(d.max(), Math.max(d.min(), v));
+  }
+}
+
+// ===== US Catan 2026 tournament preset =====
+// Derived from 20 boards used at the 2026 US Regionals, Nationals and Masters:
+// 19/20 within 7 pips of balance, 19/20 with ≤6 same-resource touches,
+// 18/20 with 6s/8s on four different resources, 18/20 with no spot over 12 pips.
+const US2026 = {
+  advanced: 'on', boardSize: '34', numberMethod: 'random',
+  redSep: 'on', twoTwelveSep: 'on', sameTouch: 'off', sameRes: 'off',
+  edge2or12: 'none', desert: 'random', ports: 'standard',
+  pipSpread: 7, resAdj: 6, redPerRes: 1, maxInter: 12,
+};
+const presetActive = () => Object.entries(US2026).every(([k, v]) => rules[k] === v);
+
 // Official spiral order: counter-clockwise around the outer ring starting at top-left,
 // then spiraling inward, ending at center.
 // Hex indexing: 0,1,2 / 3,4,5,6 / 7,8,9,10,11 / 12,13,14,15 / 16,17,18
@@ -370,7 +493,12 @@ const PORT_STANDARD_TYPES = ['3:1','3:1','pasture','3:1','mountains','fields','3
 // All 9 port types for randomization (4× 3:1 + 5× 2:1, one per resource)
 const PORT_ALL_TYPES = ['3:1','3:1','3:1','3:1','forest','pasture','fields','hills','mountains'];
 
-const DEFAULT_RULES = Object.fromEntries(RULE_SCHEMA.map(r => [r.key, r.def]));
+const BASE_RULES = Object.fromEntries(RULE_SCHEMA.map(r => [r.key, r.def]));
+const DEFAULT_RULES = {
+  ...BASE_RULES,
+  ...Object.fromEntries(DIAL_SCHEMA.map(d => [d.key, d.off(BASE_RULES)])),   // all dials off by default
+  advanced: 'off',
+};
 let rules = { ...DEFAULT_RULES };
 
 function mulberry32(a) {
@@ -434,10 +562,23 @@ function placeNumbers(resources, desertPositions, rng) {
   const placement = new Array(TOTAL_HEXES).fill(null);
   const usedResNum = new Set();
   const enforceSameRes = rules.sameRes === 'off';
+  const redLimit   = dialOff(DIAL_SCHEMA[2]) ? Infinity : rules.redPerRes;
+  const interLimit = dialOff(DIAL_SCHEMA[3]) ? Infinity : rules.maxInter;
+  const redOnRes = {};
+  const isRedNum = n => n === 6 || n === 8;
 
   function isValid(idx, num) {
     if (enforceSameRes) {
       if (usedResNum.has(resources[idx] + '|' + num)) return false;
+    }
+    if (isRedNum(num) && (redOnRes[resources[idx]] || 0) >= redLimit) return false;
+    if (interLimit !== Infinity) {
+      // Pips only add up, so a partially filled intersection already over the cap can be pruned.
+      for (const v of VERTS_BY_HEX[idx]) {
+        let sum = PIP_COUNT[num];
+        for (const h of VERTICES[v]) if (h !== idx && placement[h] !== null) sum += PIP_COUNT[placement[h]];
+        if (sum > interLimit) return false;
+      }
     }
     for (const adj of ADJACENCY[idx]) {
       const a = placement[adj];
@@ -468,12 +609,14 @@ function placeNumbers(resources, desertPositions, rng) {
       placement[hexIdx] = num;
       const key = resources[hexIdx] + '|' + num;
       if (enforceSameRes) usedResNum.add(key);
+      if (isRedNum(num)) redOnRes[resources[hexIdx]] = (redOnRes[resources[hexIdx]] || 0) + 1;
       const next = pool.slice(0, i).concat(pool.slice(i + 1));
       const r = backtrack(orderIdx + 1, next);
       if (r === true) return true;
       if (r === 'timeout') return 'timeout';
       placement[hexIdx] = null;
       if (enforceSameRes) usedResNum.delete(key);
+      if (isRedNum(num)) redOnRes[resources[hexIdx]]--;
     }
     return false;
   }
@@ -494,6 +637,41 @@ function edgeRequirementSatisfied(numbers) {
   if (rules.edge2or12 === 'both') return has2 && has12;
   return true;
 }
+
+// Pairs of touching hexes that share a resource (desert excluded).
+function sameResourcePairs(resources) {
+  let n = 0;
+  for (let i = 0; i < TOTAL_HEXES; i++)
+    for (const j of ADJACENCY[i])
+      if (j > i && resources[i] === resources[j] && resources[i] !== 'desert') n++;
+  return n;
+}
+function boardStats(resources, numbers) {
+  const pips = {}, reds = {};
+  for (const k of Object.keys(RESOURCE_COUNTS)) if (k !== 'desert') { pips[k] = 0; reds[k] = 0; }
+  for (let i = 0; i < TOTAL_HEXES; i++) {
+    const n = numbers[i];
+    if (n === null || resources[i] === 'desert') continue;
+    pips[resources[i]] += PIP_COUNT[n];
+    if (n === 6 || n === 8) reds[resources[i]]++;
+  }
+  const pv = Object.values(pips);
+  let bestInter = 0, spots12 = 0;
+  for (const tri of VERTICES) {
+    const s = tri.reduce((t, h) => t + (numbers[h] === null ? 0 : PIP_COUNT[numbers[h]]), 0);
+    if (s > bestInter) bestInter = s;
+    if (s >= 12) spots12++;
+  }
+  return {
+    pips, pipSpread: Math.max(...pv) - Math.min(...pv),
+    resAdj: sameResourcePairs(resources),
+    redPerRes: Math.max(...Object.values(reds)),
+    maxInter: bestInter, spots12,
+  };
+}
+const resourceDialsOk = resources => dialOff(DIAL_SCHEMA[1]) || sameResourcePairs(resources) <= rules.resAdj;
+const pipBalanceOk = (resources, numbers) =>
+  dialOff(DIAL_SCHEMA[0]) || boardStats(resources, numbers).pipSpread <= rules.pipSpread;
 
 function placeNumbersSpiral(resources, desertPositions) {
   // Only used for 3-4 player boards.
@@ -516,22 +694,69 @@ function generatePorts(rng) {
   return PORT_POSITIONS_34.map((pos, i) => ({ ...pos, type: types[i] }));
 }
 
-function generateBoard(seed, maxAttempts = 200) {
+// Draw resource layouts until one satisfies the resource-spreading dial (cheap — no numbers involved).
+function placeResourcesWithDials(rng, maxTries = 2000) {
+  for (let t = 0; t < maxTries; t++) {
+    const layout = placeResources(rng);
+    if (resourceDialsOk(layout.resources)) return layout;
+  }
+  return null;
+}
+
+function generateBoard(seed, maxAttempts = 400) {
   const rng = mulberry32(seed);
   const spiralAvailable = rules.boardSize === '34' && rules.numberMethod === 'spiral';
   if (spiralAvailable) {
-    const { resources, desertPositions } = placeResources(rng);
+    const layout = placeResourcesWithDials(rng);
+    if (!layout) return null;
+    const { resources, desertPositions } = layout;
     const numbers = placeNumbersSpiral(resources, desertPositions);
     const ports = generatePorts(rng);
     return { resources, numbers, desertPositions, ports, attempts: 1 };
   }
+  if (!presetActive()) return generateCandidate(rng, maxAttempts);
+  // US Catan 2026: keep drawing valid boards and accept each with a probability set by its balance score,
+  // so the accepted boards reproduce the score distribution of the 20 tournament boards.
+  let tries = 0;
+  for (let n = 1; n <= TOURNAMENT_MAX_CANDIDATES; n++) {
+    const c = generateCandidate(rng, maxAttempts);
+    if (!c) return null;
+    tries += c.attempts;
+    if (rng() < tournamentAcceptance(c)) return { ...c, attempts: tries, candidates: n };
+  }
+  return null;
+}
+
+// Balance score: spots worth 12+ pips, plus half the pip spread, plus half the same-resource touches.
+// Acceptance odds per score, calibrated on 10,000 preset boards against the 20 US Catan 2026 boards
+// (Regionals, Nationals, Masters). Lower score = more balanced = accepted more often.
+const TOURNAMENT_ACCEPT = { 2: 1, 2.5: 1, 3: 1, 3.5: 1, 4: 0.461, 4.5: 0.315, 5: 0.311, 5.5: 0.257,
+  6: 0.199, 6.5: 0.138, 7: 0.095, 7.5: 0.062, 8: 0.034, 8.5: 0.015, 9: 0.005, 9.5: 0.001 };
+const TOURNAMENT_MAX_CANDIDATES = 20000;   // safety stop only; the average board needs about 9
+function balanceScore(st) { return st.spots12 + 0.5 * st.pipSpread + 0.5 * st.resAdj; }
+function tournamentAcceptance({ resources, numbers }) {
+  const sc = balanceScore(boardStats(resources, numbers));
+  return sc < 2 ? 1 : (TOURNAMENT_ACCEPT[sc] || 0);
+}
+
+// One board that satisfies every active rule and dial.
+function generateCandidate(rng, maxAttempts) {
+  // Pip balance depends on the full number layout, so try several number placements per resource layout.
+  const NUMBER_TRIES = dialOff(DIAL_SCHEMA[0]) ? 1 : 15;
+  let tries = 0;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const { resources, desertPositions } = placeResources(rng);
-    const numbers = placeNumbers(resources, desertPositions, rng);
-    if (!numbers) continue;
-    if (!edgeRequirementSatisfied(numbers)) continue;
-    const ports = generatePorts(rng);
-    return { resources, numbers, desertPositions, ports, attempts: attempt + 1 };
+    const layout = placeResourcesWithDials(rng);
+    if (!layout) return null;
+    const { resources, desertPositions } = layout;
+    for (let k = 0; k < NUMBER_TRIES; k++) {
+      tries++;
+      const numbers = placeNumbers(resources, desertPositions, rng);
+      if (!numbers) break;                       // this layout can't satisfy the rules — reshuffle
+      if (!edgeRequirementSatisfied(numbers)) continue;
+      if (!pipBalanceOk(resources, numbers)) continue;
+      const ports = generatePorts(rng);
+      return { resources, numbers, desertPositions, ports, attempts: tries };
+    }
   }
   return null;
 }
@@ -649,6 +874,7 @@ function renderRulesPanel() {
   // In 5-6 player, spiral doesn't exist — force random.
   if (is56 && rules.numberMethod === 'spiral') rules.numberMethod = 'random';
   const spiralActive = rules.numberMethod === 'spiral';
+  html += `<div class="rules-section">Placement rules</div>`;
   for (const r of RULE_SCHEMA) {
     const disabledBySpiral = spiralActive && RANDOM_ONLY_RULES.has(r.key);
     const disabledBy56     = is56 && BOARD_34_ONLY_RULES.has(r.key);
@@ -661,17 +887,93 @@ function renderRulesPanel() {
     }
     html += `</div></div>`;
   }
+  const advOn = advancedOn();
+  html += `<label class="preset${advOn ? ' on' : ''}" id="advancedSwitch">
+      <input type="checkbox" id="advancedToggle" ${advOn ? 'checked' : ''}>
+      <span class="switch" aria-hidden="true"></span>
+      <span>
+        <div class="preset-title">Advanced rules</div>
+        <div class="preset-note">Balance dials for pip balance, resource spreading, 6/8 spread and the best settlement spot.</div>
+      </span>
+    </label>`;
+  if (advOn) {
+    const presetOn = presetActive();
+    html += `<div class="advanced-body">
+      <label class="preset${presetOn ? ' on' : ''}" id="presetSwitch">
+        <input type="checkbox" id="presetToggle" ${presetOn ? 'checked' : ''}>
+        <span class="switch" aria-hidden="true"></span>
+        <span>
+          <div class="preset-title">US Catan 2026 tournament boards</div>
+          <div class="preset-note">Tuned to try to produce boards with the same balance as the 2026 US Regionals,
+            Nationals and Masters boards.</div>
+        </span>
+      </label>
+      <div class="dial-help">Slide to tighten. The far right notch turns a dial off. The board regenerates when you let go.</div>`;
+    for (const d of DIAL_SCHEMA) {
+      const disabled = spiralActive && d.numbers;
+      html += `<div class="rule dial${disabled ? ' disabled disabled-spiral' : ''}">
+        <div class="dial-head"><div class="rule-label">${d.label}</div>
+          <span class="dial-value" id="dv-${d.key}"></span></div>
+        <div class="dial-help">${d.help}</div>
+        <input type="range" name="${d.key}" min="${d.min()}" max="${d.max()}" step="1" value="${rules[d.key]}"
+               aria-label="${d.label}">
+        <div class="dial-scale"><span>strict</span><span>off</span></div>
+      </div>`;
+    }
+    html += `</div>`;
+  }
   html += `<div class="rules-actions"><button class="ghost" id="resetRules">Reset to default</button></div>`;
   body.innerHTML = html;
+  DIAL_SCHEMA.forEach(updateDialLabel);
+
+  // Any manual change refreshes the preset switch (it turns off as soon as rules drift from the preset).
+  const afterChange = () => {
+    const p = document.getElementById('presetSwitch');
+    if (p) {
+      const on = presetActive();
+      p.classList.toggle('on', on);
+      document.getElementById('presetToggle').checked = on;
+    }
+    updateRulesSummary();
+    updateActiveRulesList();
+  };
   body.querySelectorAll('input[type=radio]').forEach(input => {
     input.addEventListener('change', () => {
+      const spotDial = DIAL_SCHEMA[3];
+      const spotWasOff = rules[spotDial.key] >= spotDial.off();
       rules[input.name] = input.value;
-      // Board size or number method change -> re-render disabled state
+      if (input.name === 'redSep') {
+        rules[spotDial.key] = spotWasOff ? spotDial.off() : Math.min(rules[spotDial.key], spotDial.max());
+        renderRulesPanel();
+      }
+      if (input.name === 'boardSize') applyBoardSize();
+      // Board size or number method change -> re-render disabled state / dial ranges
       if (input.name === 'numberMethod' || input.name === 'boardSize') renderRulesPanel();
-      if (input.name === 'boardSize') { applyBoardSize(); go(); }
-      updateRulesSummary();
-      updateActiveRulesList();
+      if (input.name === 'boardSize') go();
+      afterChange();
     });
+  });
+  body.querySelectorAll('input[type=range]').forEach(input => {
+    const d = DIAL_SCHEMA.find(x => x.key === input.name);
+    input.addEventListener('input', () => { rules[d.key] = +input.value; updateDialLabel(d); afterChange(); });
+    input.addEventListener('change', () => go());
+  });
+  const applyRules = next => {
+    rules = next;
+    applyBoardSize();
+    renderRulesPanel();
+    updateRulesSummary();
+    updateActiveRulesList();
+    go();
+  };
+  const dialsOff = Object.fromEntries(DIAL_SCHEMA.map(d => [d.key, d.off()]));
+  // Turning Advanced rules on starts from the US Catan 2026 settings; turning it off drops the dials.
+  document.getElementById('advancedToggle').addEventListener('change', e => {
+    applyRules(e.target.checked ? { ...rules, ...US2026 } : { ...rules, ...dialsOff, advanced: 'off' });
+  });
+  const presetToggle = document.getElementById('presetToggle');
+  if (presetToggle) presetToggle.addEventListener('change', e => {
+    applyRules(e.target.checked ? { ...rules, ...US2026 } : { ...rules, ...dialsOff });
   });
   document.getElementById('resetRules').addEventListener('click', () => {
     rules = { ...DEFAULT_RULES };
@@ -683,9 +985,19 @@ function renderRulesPanel() {
   });
 }
 
-function isAllDefault() { return RULE_SCHEMA.every(r => rules[r.key] === r.def); }
+function updateDialLabel(d) {
+  const el = document.getElementById('dv-' + d.key);
+  if (!el) return;
+  const off = dialOff(d);
+  el.textContent = off ? 'Off' : d.unit(rules[d.key]);
+  el.classList.toggle('off', off);
+}
+function isAllDefault() {
+  return RULE_SCHEMA.every(r => rules[r.key] === r.def) && !advancedOn();
+}
 function updateRulesSummary() {
-  document.getElementById('rulesSummary').textContent = isAllDefault() ? 'Default' : 'Custom';
+  document.getElementById('rulesSummary').textContent =
+    presetActive() ? 'US Catan 2026' : (isAllDefault() ? 'Default' : 'Custom');
 }
 function ruleDescription(r, val) {
   const o = r.options.find(x => x.val === val);
@@ -713,7 +1025,27 @@ function updateActiveRulesList() {
     if (is56 && BOARD_34_ONLY_RULES.has(r.key)) continue;
     html += `<li><strong>${r.label}:</strong> ${ruleDescription(r, rules[r.key])}</li>`;
   }
+  for (const d of DIAL_SCHEMA) {
+    if (dialOff(d) || (spiralActive && d.numbers)) continue;
+    html += `<li><strong>${d.label}:</strong> ${d.unit(rules[d.key])}</li>`;
+  }
   ul.innerHTML = html;
+}
+
+// Show the generated board's actual numbers for each dial, so people can see what the dials do.
+function renderBoardStats(result) {
+  const el = document.getElementById('boardStats');
+  if (!el) return;
+  if (!result) { el.innerHTML = ''; return; }
+  const s = boardStats(result.resources, result.numbers);
+  const perRes = Object.entries(s.pips).map(([k, v]) => `${RESOURCE_LABEL[k]} ${v}`).join(' · ');
+  const limit = d => dialOff(d) ? 'no limit' : `limit ${rules[d.key]}`;
+  const [dp, dr, dd, dm] = DIAL_SCHEMA;
+  el.innerHTML = `
+    <div class="stat"><b>${s.pipSpread}</b><span>pip spread · ${limit(dp)}</span><small>${perRes}</small></div>
+    <div class="stat"><b>${s.resAdj}</b><span>same-resource touches · ${limit(dr)}</span></div>
+    <div class="stat"><b>${s.redPerRes}</b><span>most 6/8s on one resource · ${limit(dd)}</span></div>
+    <div class="stat"><b>${s.maxInter}</b><span>best spot (pips) · ${limit(dm)}</span></div>`;
 }
 
 const seedEl = document.getElementById('seed');
@@ -728,13 +1060,19 @@ function go(seed) {
     metaEl.textContent = 'No valid board for these rules — try different settings.';
     seedEl.textContent = '—';
     document.getElementById('board').innerHTML = '';
+    renderBoardStats(null);
     return;
   }
   seedEl.textContent = s.toString(16).padStart(8, '0');
-  metaEl.textContent = `Solved in ${result.attempts} ${result.attempts === 1 ? 'try' : 'tries'}.`;
+  metaEl.textContent = result.candidates
+    ? `Matched the 2026 tournament profile after ${result.candidates} ${result.candidates === 1 ? 'board' : 'boards'}.`
+    : `Solved in ${result.attempts} ${result.attempts === 1 ? 'try' : 'tries'}.`;
   renderBoard(result);
+  renderBoardStats(result);
 }
 
+const params = new URLSearchParams(location.search);
+if (params.get('preset') === 'us2026') rules = { ...DEFAULT_RULES, ...US2026 };
 applyBoardSize();
 renderRulesPanel();
 updateRulesSummary();
@@ -742,7 +1080,6 @@ updateActiveRulesList();
 
 document.getElementById('gen').addEventListener('click', () => go());
 
-const params = new URLSearchParams(location.search);
 const initSeed = params.get('seed');
 if (initSeed && /^[0-9a-fA-F]+$/.test(initSeed)) {
   go(parseInt(initSeed, 16) >>> 0);
@@ -752,7 +1089,8 @@ if (initSeed && /^[0-9a-fA-F]+$/.test(initSeed)) {
 
 document.getElementById('seedRow').addEventListener('click', async () => {
   if (seedEl.textContent === '—') return;
-  const url = `${location.origin}${location.pathname}?seed=${seedEl.textContent}`;
+  const url = `${location.origin}${location.pathname}?seed=${seedEl.textContent}` +
+              (presetActive() ? '&preset=us2026' : '');
   try {
     await navigator.clipboard.writeText(url);
     const old = metaEl.textContent;
