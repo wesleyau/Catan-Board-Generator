@@ -1098,8 +1098,9 @@ function go(seed) {
     return;
   }
   seedEl.textContent = s.toString(16).padStart(8, '0');
+  // US Catan 2026 preset shows no status line; other modes report how many tries it took.
   metaEl.textContent = result.candidates
-    ? `Picked from ${result.candidates} tournament-style boards to match the real tournament mix.`
+    ? ''
     : `Solved in ${result.attempts} ${result.attempts === 1 ? 'try' : 'tries'}.`;
   renderBoard(result);
   renderBoardStats(result);
