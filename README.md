@@ -55,11 +55,9 @@ The first switch under Advanced rules sets every rule and dial, tuned to try to 
 - Pip balance ≤ 8 · same-resource touches ≤ 7 · at most two 6s/8s on one resource · best spot ≤ 13 pips (the loosest limits that still allow every real board)
 With the preset on, the generator also matches how real boards are *distributed*, not just their limits, in two steps:
  
-1. **Acceptance.** It keeps drawing valid boards and accepts each with odds based on a balance score (spots worth 12+ pips, plus half the pip spread, plus half the same-resource touches). The odds are calibrated so accepted boards lean as balanced as real tournament boards.
-2. **Selection.** It picks one real tournament board at random and keeps the accepted board closest to it, out of 50, comparing 12 balance measures. Matching a random real board, rather than the average one, keeps the variety real boards have.
-In a test of 6,000 boards, none of 15 balance measures differed significantly from the real boards. A board takes about 100 ms.
- 
-If you change any setting, the preset switch turns off. Share links copied while the preset is on include `&preset=us2026`, so the board opens with the preset applied.
+1. **Acceptance.** It keeps drawing valid boards and accepts each with odds based on a balance score (spots worth 12+ pips, plus half the pip spread, plus half the same-resource touches), until it has 100 candidates that lean as balanced as real tournament boards.
+2. **Weighted pick.** Each candidate gets a weight for how under-represented its type is compared with the real boards, across 7 measures: best spot, spots worth 12+, pip spread, same-resource touches, most 6/8s on one resource, and brick and ore pips. One board is picked with odds proportional to its weight. Across many boards this reproduces the real distribution, not just the average board, and the same seed always gives the same board.
+   
 ## Ports (3–4 player)
  
 Every 3–4 board includes 9 ports on the coast — **4 generic 3:1 ports** and **5 resource-specific 2:1 ports** (one for each of wood, sheep, wheat, brick, ore). Two options:
