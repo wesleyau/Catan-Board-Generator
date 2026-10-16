@@ -421,7 +421,9 @@ const DIAL_SCHEMA = [
     min: () => 1, max: () => 13, off: () => 13, unit: n => `≤ ${n} pips apart`, numbers: true },
   { key: 'resAdj', label: 'Resource spreading',
     help: 'Max number of places where two hexes of the same resource touch (e.g. wheat next to wheat). Lower = more spread out.',
-    min: () => 0, max: () => 15, off: () => 15, unit: n => `≤ ${n} touching pairs`, numbers: false },
+    // Lowest notch that reliably finds a board: 0 rarely works on 3–4; on 5–6, values under 4 often fail.
+    min: (r = rules) => (r.boardSize === '56' ? 4 : 1), max: () => 15, off: () => 15,
+    unit: n => `≤ ${n} touching pairs`, numbers: false },
   { key: 'redPerRes', label: '6s and 8s per resource',
     help: 'Max red numbers (6/8) on any single resource. 1 = every 6 and 8 is on a different resource.',
     min: () => Math.ceil(redTokenCount() / 5), max: () => redTokenCount(), off: () => redTokenCount(),
