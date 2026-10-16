@@ -30,6 +30,33 @@ The 5–6 board uses random placement only (there's no port support for it yet).
 4. No duplicate number on the same resource
 The desert is placed at random, and there's no requirement on where 2 or 12 land — both can be tightened in the Rules panel.
 
+## Advanced rules
+ 
+**Advanced rules** is a switch at the bottom of the Rules panel, off by default. Turning it on reveals the US Catan 2026 preset and four balance dials, and starts you on the US Catan 2026 settings. Turning it off removes the dials' effect.
+ 
+### Balance dials
+ 
+Four sliders let you tighten how balanced a board is. The far-right notch on each turns it off, and the board regenerates when you release a slider. A **This board** panel under the board shows the generated board's actual value for each dial.
+ 
+| Dial | What it limits |
+|---|---|
+| Resource pip balance | Max difference in total pips between the richest and poorest resource |
+| Resource spreading | Max number of touching hex pairs that share a resource |
+| 6s and 8s per resource | Max red numbers on any one resource (1 = all on different resources) |
+| Best settlement spot | Max total pips at any three-hex intersection |
+ 
+Resource spreading also applies in spiral mode; the other three only apply to random number placement.
+ 
+### US Catan 2026 preset
+ 
+The first switch under Advanced rules sets every rule and dial, tuned to try to produce boards with the same balance as the 2026 US Catan Regionals, Nationals and Masters boards (based on 20 tournament boards):
+ 
+- Your four default placement rules, standard ports, random desert
+- Pip balance ≤ 7 · same-resource touches ≤ 6 · 6s/8s all on different resources · no spot over 12 pips
+With the preset on, the generator also matches the *spread* of tournament boards, not just their limits. It keeps drawing valid boards and accepts each with odds based on a balance score (spots worth 12+ pips, plus half the pip spread, plus half the same-resource touches). The odds were calibrated so accepted boards reproduce the score distribution of the 20 tournament boards. A board usually takes about 6 candidates (median), around 25 ms on average.
+ 
+If you change any setting, the preset switch turns off. Share links copied while the preset is on include `&preset=us2026`, so the board opens with the preset applied.
+
 ## Ports (3–4 player)
  
 Every 3–4 board includes 9 ports on the coast — **4 generic 3:1 ports** and **5 resource-specific 2:1 ports** (one for each of wood, sheep, wheat, brick, ore). Two options:
